@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เครื่องมือประเมินคุณภาพการรับนักเรียน</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Harmony -->
+    <!-- Application Structure Plan: The application is designed as an interactive dashboard. The core is a self-assessment tool featuring a radar chart that visualizes a school's performance across the five quality levels. Users interact with sliders, and the chart updates in real-time. Clicking a level reveals detailed information (description, activities, evidence). Two new LLM-powered features have been added: "Generate Development Plan" provides personalized, actionable advice based on the user's assessment scores, and "Generate Interview Questions" creates specific questions for different stakeholders to probe into low-scoring areas. This structure transforms a static list of criteria into a dynamic, engaging tool for self-evaluation, improvement, and proactive guidance, making the information more digestible and actionable. The user has requested to ensure all details for all 5 levels are fully implemented, which this version confirms and provides. -->
+    <!-- Visualization & Content Choices: 
+        1. Report Info: 5 Levels of Quality. Goal: Self-assess & Compare. Viz: Radar Chart. Interaction: Sliders update chart data. Justification: Provides an immediate, holistic view of strengths/weaknesses across all criteria. Library: Chart.js (Canvas).
+        2. Report Info: Details for each quality level. Goal: Inform & Guide. Presentation: Dynamic text blocks. Interaction: Clicking a level's title shows its details. Justification: "Detail on demand" prevents information overload and keeps the interface clean. Method: JS show/hide. All 5 levels are now fully documented.
+        3. Report Info: Evaluation Methods (Interviews, Evidence). Goal: Organize. Presentation: Tabbed interface. Interaction: Click to switch tabs. Justification: A standard, intuitive way to group and access related but distinct information sets. Method: HTML/CSS/JS.
+        4. Gemini API Integration (Plan): Based on slider scores. Goal: Generate personalized, actionable plan. Presentation: Dynamic text block. Interaction: Button click triggers LLM call. Justification: Turns a static assessment tool into a powerful, advisory resource for improvement. Method: Gemini API call via JS fetch.
+        5. Gemini API Integration (Interview Questions): Based on low slider scores. Goal: Generate specific interview questions. Presentation: Dynamic text block. Interaction: Button click triggers LLM call. Justification: Complements the "Interviews" evaluation method and provides a practical tool for data gathering. Method: Gemini API call via JS fetch.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 40vh;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+                max-height: 50vh;
+            }
+        }
+        .slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .tab-active {
+            border-color: #4f46e5;
+            color: #4f46e5;
+            background-color: #eef2ff;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">เครื่องมือประเมินและยกระดับคุณภาพการรับนักเรียน</h1>
+            <p class="mt-2 text-lg text-slate-600">วิเคราะห์และประเมินกระบวนการรับนักเรียนของสถานศึกษาตามเกณฑ์มาตรฐานคุณภาพ 5 ระดับ</p>
+        </header>
+
+        <main class="space-y-12">
+            
+            <section id="assessment-dashboard" class="bg-white p-6 rounded-2xl shadow-lg">
+                <h2 class="text-2xl font-bold mb-4 text-center text-slate-800">แดชบอร์ดประเมินตนเอง</h2>
+                <p class="text-center text-slate-600 mb-6">ปรับแถบเลื่อนด้านล่างเพื่อประเมินระดับคุณภาพการดำเนินงานของสถานศึกษาในแต่ละด้าน ผลลัพธ์จะแสดงบนเรดาร์ชาร์ตทันที</p>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                    <div class="chart-container">
+                        <canvas id="qualityChart"></canvas>
+                    </div>
+                    <div id="sliders" class="space-y-4">
+                    </div>
+                </div>
+                <div class="mt-8 flex flex-col sm:flex-row justify-center items-center gap-4">
+                    <button id="generate-plan-btn" class="bg-indigo-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:bg-indigo-700 transition-colors duration-300 w-full sm:w-auto">
+                        สร้างแผนพัฒนา ✨
+                    </button>
+                    <button id="generate-questions-btn" class="bg-indigo-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:bg-indigo-700 transition-colors duration-300 w-full sm:w-auto">
+                        สร้างชุดคำถามสัมภาษณ์ ✨
+                    </button>
+                </div>
+            </section>
+
+            <section id="llm-plan-output" class="bg-white p-6 rounded-2xl shadow-lg hidden">
+                <h2 class="text-2xl font-bold mb-4 text-center text-slate-800">แผนพัฒนาคุณภาพการรับนักเรียน</h2>
+                <div id="llm-plan-content" class="mt-4 p-4 bg-slate-50 rounded-lg min-h-[300px] text-slate-700">
+                    <p class="text-center text-slate-500">
+                        กำลังสร้างแผน... กรุณารอสักครู่
+                    </p>
+                </div>
+            </section>
+            
+            <section id="llm-questions-output" class="bg-white p-6 rounded-2xl shadow-lg hidden">
+                <h2 class="text-2xl font-bold mb-4 text-center text-slate-800">ชุดคำถามสัมภาษณ์เชิงลึก</h2>
+                <div id="llm-questions-content" class="mt-4 p-4 bg-slate-50 rounded-lg min-h-[300px] text-slate-700">
+                    <p class="text-center text-slate-500">
+                        กำลังสร้างชุดคำถาม... กรุณารอสักครู่
+                    </p>
+                </div>
+            </section>
+
+            <section id="details" class="bg-white p-6 rounded-2xl shadow-lg">
+                <h2 class="text-2xl font-bold mb-4 text-center text-slate-800">รายละเอียดและแนวทางการปฏิบัติ</h2>
+                <p class="text-center text-slate-600 mb-6">คลิกที่ชื่อระดับคุณภาพบนแถบเลื่อนเพื่อดูรายละเอียด, แนวทางการดำเนินงาน, และหลักฐานที่จำเป็น</p>
+                <div id="details-content" class="mt-4 p-4 bg-slate-50 rounded-lg min-h-[300px]">
+                </div>
+            </section>
+
+            <section id="evaluation-methods" class="bg-white p-6 rounded-2xl shadow-lg">
+                <h2 class="text-2xl font-bold mb-6 text-center text-slate-800">วิธีการประเมิน</h2>
+                <div class="border-b border-slate-200">
+                    <nav class="-mb-px flex justify-center space-x-4" aria-label="Tabs">
+                        <button onclick="switchTab('interviews')" id="tab-interviews" class="tab-active whitespace-nowrap py-3 px-4 border-b-2 font-semibold text-sm rounded-t-lg">
+                            การสอบถามบุคคลที่เกี่ยวข้อง
+                        </button>
+                        <button onclick="switchTab('evidence')" id="tab-evidence" class="text-slate-500 hover:text-slate-700 whitespace-nowrap py-3 px-4 border-b-2 font-semibold text-sm rounded-t-lg">
+                            การพิจารณาจากหลักฐาน
+                        </button>
+                    </nav>
+                </div>
+                <div class="mt-6">
+                    <div id="content-interviews">
+                        <p class="text-slate-600 mb-4">การสัมภาษณ์ผู้มีส่วนได้ส่วนเสียช่วยให้ได้ข้อมูลเชิงลึกและความคิดเห็นที่นอกเหนือจากเอกสาร เพื่อความเข้าใจที่ครอบคลุมควรสอบถามบุคคลต่อไปนี้:</p>
+                        <ul class="list-disc list-inside space-y-2 text-slate-700">
+                            <li><strong>ผู้บริหารสถานศึกษา:</strong> เพื่อทำความเข้าใจวิสัยทัศน์ การวางแผน และการกำกับดูแล</li>
+                            <li><strong>คณะทำงาน/ครูผู้รับผิดชอบ:</strong> เพื่อประเมินการนำแผนไปปฏิบัติจริงและปัญหาที่พบ</li>
+                            <li><strong>ผู้ปกครองและนักเรียน:</strong> เพื่อวัดระดับความพึงพอใจ ความเข้าใจ และการรับรู้ถึงความเป็นธรรม</li>
+                            <li><strong>คณะกรรมการสถานศึกษาและตัวแทนชุมชน:</strong> เพื่อประเมินการมีส่วนร่วมและการรับรู้ของสาธารณชน</li>
+                        </ul>
+                    </div>
+                    <div id="content-evidence" class="hidden">
+                        <p class="text-slate-600 mb-4">การตรวจสอบหลักฐานที่เป็นรูปธรรมช่วยยืนยันการดำเนินงานตามแผนและนโยบายที่กำหนดไว้ หลักฐานสำคัญประกอบด้วย:</p>
+                        <ul class="list-disc list-inside space-y-2 text-slate-700">
+                            <li><strong>เอกสารการวางแผน:</strong> แผนการรับนักเรียน, คำสั่งแต่งตั้งคณะทำงาน, รายงานการประชุม</li>
+                            <li><strong>เอกสารเผยแพร่:</strong> ประกาศรับนักเรียน, แผ่นพับ, ข้อมูลบนเว็บไซต์และโซเชียลมีเดีย</li>
+                            <li><strong>บันทึกการดำเนินงาน:</strong> ใบสมัคร, บันทึกการคัดเลือก (ถ้ามี), รายชื่อนักเรียนที่รับ</li>
+                            <li><strong>รายงานสรุปผล:</strong> รายงานสรุปการดำเนินงาน, ผลการประเมินความพึงพอใจ, แผนการพัฒนาปรับปรุง</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <footer class="text-center mt-12 py-4 border-t border-slate-200">
+            <p class="text-sm text-slate-500">พัฒนาขึ้นเพื่อสนับสนุนการประกันคุณภาพการศึกษา</p>
+        </footer>
+
+    </div>
+
+    <script>
+        const qualityLevels = [
+            {
+                id: 1,
+                title: "การวางแผน",
+                fullTitle: "ระดับ 1: มีการวางแผนการรับนักเรียน",
+                description: "มีการวางแผนการรับนักเรียนโดยวิเคราะห์ข้อมูลจากบริบทของโรงเรียนและนโยบายของต้นสังกัดอย่างเป็นระบบ",
+                activities: [
+                    "วิเคราะห์ข้อมูลพื้นฐานของโรงเรียน (อัตรากำลัง, จำนวนห้องเรียน)",
+                    "ศึกษาและปฏิบัติตามนโยบายการรับนักเรียนของ สพฐ. และเขตพื้นที่ฯ",
+                    "กำหนดจำนวนรับ, คุณสมบัติ, และเกณฑ์การคัดเลือกที่ชัดเจน",
+                    "จัดทำแผนปฏิบัติการและปฏิทินการรับนักเรียนประจำปี"
+                ],
+                evidence: [
+                    "แผนการรับนักเรียนประจำปี",
+                    "รายงานการวิเคราะห์ข้อมูลพื้นฐาน",
+                    "เอกสารนโยบายจากหน่วยงานต้นสังกัด"
+                ]
+            },
+            {
+                id: 2,
+                title: "การมอบหมายงาน",
+                fullTitle: "ระดับ 2: มีผู้รับผิดชอบชัดเจน",
+                description: "มีการแต่งตั้งผู้รับผิดชอบหรือคณะทำงานในแต่ละกิจกรรมของแผนการรับนักเรียน ทำให้การดำเนินงานเป็นไปอย่างราบรื่น",
+                activities: [
+                    "ออกคำสั่งแต่งตั้งคณะกรรมการ/คณะทำงานรับนักเรียน",
+                    "กำหนดบทบาทหน้าที่ความรับผิดชอบของแต่ละฝ่ายอย่างชัดเจน",
+                    "จัดประชุมชี้แจงและเตรียมความพร้อมคณะทำงาน",
+                    "สร้างช่องทางการสื่อสารและประสานงานภายในทีม"
+                ],
+                evidence: [
+                    "คำสั่งแต่งตั้งคณะทำงาน",
+                    "บันทึกการประชุมชี้แจงคณะทำงาน",
+                    "แผนผังโครงสร้างการดำเนินงาน"
+                ]
+            },
+            {
+                id: 3,
+                title: "การเผยแพร่ข้อมูล",
+                fullTitle: "ระดับ 3: มีการเผยแพร่ให้สาธารณชนทราบ",
+                description: "มีการจัดทำประกาศ แนวปฏิบัติ และแผนการรับนักเรียน เผยแพร่ให้สาธารณชนรับทราบอย่างทั่วถึงและโปร่งใส",
+                activities: [
+                    "จัดทำประกาศรับนักเรียนที่มีข้อมูลครบถ้วน (กำหนดการ, คุณสมบัติ, เอกสาร)",
+                    "เผยแพร่ประกาศผ่านช่องทางที่หลากหลาย เช่น เว็บไซต์, โซเชียลมีเดีย, ป้ายประชาสัมพันธ์",
+                    "จัดกิจกรรม Open House เพื่อแนะนำโรงเรียน (ถ้ามี)",
+                    "เตรียมช่องทางสำหรับตอบคำถามและให้ข้อมูลแก่ผู้ปกครอง"
+                ],
+                evidence: [
+                    "ประกาศรับนักเรียนฉบับทางการ",
+                    "ภาพถ่ายป้ายประชาสัมพันธ์",
+                    "หลักฐานการเผยแพร่ผ่านช่องทางออนไลน์ (Screenshot)"
+                ]
+            },
+            {
+                id: 4,
+                title: "การสร้างความเข้าใจ",
+                fullTitle: "ระดับ 4: มีการสร้างความเข้าใจอย่างชัดเจน",
+                description: "มีการสร้างความเข้าใจให้ครู นักเรียน ผู้ปกครอง ชุมชน และผู้เกี่ยวข้องทราบอย่างชัดเจน เพื่อให้เกิดความร่วมมือและความเชื่อมั่น",
+                activities: [
+                    "จัดประชุมชี้แจงผู้ปกครองและผู้ที่สนใจ",
+                    "สื่อสารนโยบายและขั้นตอนให้บุคลากรภายในเข้าใจตรงกัน",
+                    "สร้างช่องทางรับฟังความคิดเห็นและข้อเสนอแนะจากผู้มีส่วนได้ส่วนเสีย",
+                    "ตอบข้อซักถามและชี้แจงประเด็นที่อาจเกิดความเข้าใจผิดอย่างทันท่วงที"
+                ],
+                evidence: [
+                    "หนังสือเชิญประชุมผู้ปกครอง",
+                    "ภาพกิจกรรมการประชุมชี้แจง",
+                    "สรุปข้อซักถามและคำชี้แจง"
+                ]
+            },
+            {
+                id: 5,
+                title: "การปรับปรุงพัฒนา",
+                fullTitle: "ระดับ 5: มีการสรุปผลเพื่อนำไปพัฒนา",
+                description: "มีการสรุปผลการดำเนินงาน เพื่อนำข้อมูลที่ได้มาวิเคราะห์และใช้ในการปรับปรุงพัฒนากระบวนการรับนักเรียนในปีต่อไป (วงจร PDCA)",
+                activities: [
+                    "รวบรวมข้อมูลการดำเนินงานทั้งหมด (จำนวนผู้สมัคร, ปัญหาที่พบ)",
+                    "ประเมินความพึงพอใจของผู้ปกครองและนักเรียน",
+                    "จัดประชุมสรุปและถอดบทเรียนการดำเนินงาน",
+                    "จัดทำรายงานสรุปผลพร้อมข้อเสนอแนะเพื่อการพัฒนา"
+                ],
+                evidence: [
+                    "รายงานสรุปผลการรับนักเรียน",
+                    "ผลการวิเคราะห์แบบสอบถามความพึงพอใจ",
+                    "แผนการพัฒนากระบวนการรับนักเรียนสำหรับปีถัดไป"
+                ]
+            }
+        ];
+
+        let chart;
+        const initialData = qualityLevels.map(() => 1);
+
+        function createSliders() {
+            const slidersContainer = document.getElementById('sliders');
+            qualityLevels.forEach((level, index) => {
+                const sliderWrapper = document.createElement('div');
+                
+                const label = document.createElement('label');
+                label.setAttribute('for', `slider-${level.id}`);
+                label.className = "block text-md font-semibold text-slate-700 mb-2 cursor-pointer hover:text-indigo-600";
+                label.textContent = level.fullTitle;
+                label.onclick = () => showDetails(index);
+
+                const sliderContainer = document.createElement('div');
+                sliderContainer.className = "flex items-center gap-4";
+
+                const input = document.createElement('input');
+                input.type = 'range';
+                input.id = `slider-${level.id}`;
+                input.min = '1';
+                input.max = '5';
+                input.value = '1';
+                input.className = 'w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer slider-thumb bg-indigo-600';
+                input.oninput = (event) => {
+                    const value = parseInt(event.target.value);
+                    document.getElementById(`value-${level.id}`).textContent = value;
+                    updateChart(index, value);
+                };
+
+                const valueSpan = document.createElement('span');
+                valueSpan.id = `value-${level.id}`;
+                valueSpan.className = "font-bold text-lg text-indigo-600 w-8 text-center";
+                valueSpan.textContent = '1';
+
+                sliderContainer.appendChild(input);
+                sliderContainer.appendChild(valueSpan);
+                sliderWrapper.appendChild(label);
+                sliderWrapper.appendChild(sliderContainer);
+
+                slidersContainer.appendChild(sliderWrapper);
+            });
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('qualityChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: qualityLevels.map(l => l.title),
+                    datasets: [{
+                        label: 'ระดับคุณภาพ',
+                        data: initialData,
+                        backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                        borderColor: 'rgba(79, 70, 229, 1)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgba(79, 70, 229, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(79, 70, 229, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            },
+                            pointLabels: {
+                                font: {
+                                    size: 14,
+                                    family: "'Sarabun', sans-serif"
+                                },
+                                color: '#334155'
+                            },
+                            ticks: {
+                                beginAtZero: true,
+                                min: 0,
+                                max: 5,
+                                stepSize: 1,
+                                backdropColor: 'rgba(255, 255, 255, 0.75)',
+                                color: '#64748b'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(index, value) {
+            chart.data.datasets[0].data[index] = value;
+            chart.update();
+        }
+
+        function showDetails(index) {
+            const level = qualityLevels[index];
+            const contentDiv = document.getElementById('details-content');
+            
+            let activitiesHtml = level.activities.map(item => `<li class="flex items-start"><span class="text-indigo-500 mr-2 mt-1">&#10003;</span><span>${item}</span></li>`).join('');
+            let evidenceHtml = level.evidence.map(item => `<li class="flex items-start"><span class="text-amber-500 mr-2 mt-1">&#128203;</span><span>${item}</span></li>`).join('');
+
+            contentDiv.innerHTML = `
+                <h3 class="text-xl font-bold text-indigo-700 mb-2">${level.fullTitle}</h3>
+                <p class="text-slate-600 mb-6">${level.description}</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="font-semibold text-slate-800 mb-2">แนวทางการดำเนินงานหลัก:</h4>
+                        <ul class="space-y-2 text-slate-700">${activitiesHtml}</ul>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-slate-800 mb-2">ตัวอย่างหลักฐานที่ปรากฏ:</h4>
+                        <ul class="space-y-2 text-slate-700">${evidenceHtml}</ul>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function switchTab(tabName) {
+            const interviewsTab = document.getElementById('tab-interviews');
+            const evidenceTab = document.getElementById('tab-evidence');
+            const interviewsContent = document.getElementById('content-interviews');
+            const evidenceContent = document.getElementById('content-evidence');
+
+            if (tabName === 'interviews') {
+                interviewsTab.classList.add('tab-active');
+                evidenceTab.classList.remove('tab-active');
+                interviewsContent.classList.remove('hidden');
+                evidenceContent.classList.add('hidden');
+            } else {
+                evidenceTab.classList.add('tab-active');
+                interviewsTab.classList.remove('tab-active');
+                evidenceContent.classList.remove('hidden');
+                interviewsContent.classList.add('hidden');
+            }
+        }
+
+        async function generatePlan() {
+            const llmOutputSection = document.getElementById('llm-plan-output');
+            const llmContentDiv = document.getElementById('llm-plan-content');
+            const planButton = document.getElementById('generate-plan-btn');
+            
+            llmOutputSection.classList.remove('hidden');
+            llmContentDiv.innerHTML = `<p class="text-center text-slate-500">กำลังสร้างแผน... กรุณารอสักครู่</p>`;
+            document.getElementById('llm-questions-output').classList.add('hidden');
+            planButton.disabled = true;
+            planButton.textContent = 'กำลังสร้าง...';
+            document.getElementById('generate-questions-btn').disabled = true;
+
+            const scores = chart.data.datasets[0].data;
+            const scoreDetails = qualityLevels.map((level, index) => `${level.fullTitle} ได้คะแนน ${scores[index]}`).join('; ');
+            
+            const prompt = `
+                ในฐานะผู้เชี่ยวชาญด้านการประกันคุณภาพการศึกษาของไทย จงสร้างแผนปฏิบัติการเพื่อพัฒนาคุณภาพกระบวนการรับนักเรียนของสถานศึกษาแห่งหนึ่ง
+                โดยใช้ข้อมูลการประเมินตนเองตามเกณฑ์ 5 ระดับดังนี้:
+                ${scoreDetails}
+
+                แผนปฏิบัติการนี้ควร:
+                1. เน้นการปรับปรุงในด้านที่ได้คะแนนต่ำ (ต่ำกว่า 5)
+                2. แนะนำกิจกรรมที่เฉพาะเจาะจงและเป็นขั้นตอน
+                3. มีเนื้อหาในเชิงสร้างสรรค์และให้กำลังใจ
+                4. เขียนด้วยภาษาไทยอย่างเป็นทางการและเหมาะสมสำหรับผู้บริหารสถานศึกษา
+                5. จัดรูปแบบผลลัพธ์ให้อ่านง่ายเป็นข้อๆ
+            `;
+
+            try {
+                const chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                
+                let response;
+                let result;
+                let retries = 0;
+                const maxRetries = 3;
+                const baseDelay = 1000;
+
+                while(retries < maxRetries) {
+                    try {
+                        response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (response.status === 429) {
+                            retries++;
+                            const delay = baseDelay * Math.pow(2, retries);
+                            console.warn(`Rate limit exceeded. Retrying in ${delay}ms...`);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            continue;
+                        }
+                        result = await response.json();
+                        break;
+                    } catch (error) {
+                        retries++;
+                        const delay = baseDelay * Math.pow(2, retries);
+                        console.error(`Fetch error. Retrying in ${delay}ms...`, error);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
+                
+                if (result && result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    llmContentDiv.innerHTML = `<pre class="whitespace-pre-wrap">${text}</pre>`;
+                } else {
+                    llmContentDiv.innerHTML = `<p class="text-center text-red-500">เกิดข้อผิดพลาดในการสร้างแผน กรุณาลองใหม่อีกครั้ง</p>`;
+                }
+            } catch (error) {
+                console.error('Error generating plan:', error);
+                llmContentDiv.innerHTML = `<p class="text-center text-red-500">เกิดข้อผิดพลาดในการสร้างแผน กรุณาลองใหม่อีกครั้ง</p>`;
+            } finally {
+                planButton.disabled = false;
+                planButton.textContent = 'สร้างแผนพัฒนา ✨';
+                document.getElementById('generate-questions-btn').disabled = false;
+            }
+        }
+        
+        async function generateInterviewQuestions() {
+            const llmOutputSection = document.getElementById('llm-questions-output');
+            const llmContentDiv = document.getElementById('llm-questions-content');
+            const questionsButton = document.getElementById('generate-questions-btn');
+            
+            llmOutputSection.classList.remove('hidden');
+            llmContentDiv.innerHTML = `<p class="text-center text-slate-500">กำลังสร้างชุดคำถาม... กรุณารอสักครู่</p>`;
+            document.getElementById('llm-plan-output').classList.add('hidden');
+            questionsButton.disabled = true;
+            questionsButton.textContent = 'กำลังสร้าง...';
+            document.getElementById('generate-plan-btn').disabled = true;
+
+            const scores = chart.data.datasets[0].data;
+            const lowScores = scores.map((score, index) => {
+                if (score < 5) {
+                    return `ด้าน ${qualityLevels[index].title} ได้คะแนน ${score} จาก 5`;
+                }
+                return null;
+            }).filter(Boolean);
+
+            const prompt = `
+                ในฐานะผู้เชี่ยวชาญด้านการประกันคุณภาพการศึกษา จงสร้างชุดคำถามสัมภาษณ์เพื่อใช้ประเมินคุณภาพการรับนักเรียนของสถานศึกษาแห่งหนึ่ง
+                โดยชุดคำถามนี้มีวัตถุประสงค์เพื่อหาข้อมูลเชิงลึกและสาเหตุของปัญหาในด้านที่ได้คะแนนต่ำ
+                ข้อมูลคะแนนที่ได้คือ: ${lowScores.join(', ')}
+                หากทุกด้านได้คะแนน 5 ให้สร้างชุดคำถามเพื่อการยกระดับคุณภาพให้ดียิ่งขึ้น
+
+                ชุดคำถามควร:
+                1. แบ่งชุดคำถามตามกลุ่มเป้าหมาย (ผู้บริหาร, ครู/คณะทำงาน, ผู้ปกครอง)
+                2. แต่ละกลุ่มเป้าหมายควรมีคำถามประมาณ 3-5 ข้อ
+                3. คำถามต้องกระตุ้นให้เกิดการให้ข้อมูลเชิงลึกและคำแนะนำเพื่อการพัฒนา
+                4. เขียนด้วยภาษาไทยที่สุภาพและเหมาะสม
+                5. จัดรูปแบบผลลัพธ์ให้อ่านง่ายเป็นหมวดหมู่
+            `;
+
+            try {
+                const chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                
+                let response;
+                let result;
+                let retries = 0;
+                const maxRetries = 3;
+                const baseDelay = 1000;
+
+                while(retries < maxRetries) {
+                    try {
+                        response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (response.status === 429) {
+                            retries++;
+                            const delay = baseDelay * Math.pow(2, retries);
+                            console.warn(`Rate limit exceeded. Retrying in ${delay}ms...`);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            continue;
+                        }
+                        result = await response.json();
+                        break;
+                    } catch (error) {
+                        retries++;
+                        const delay = baseDelay * Math.pow(2, retries);
+                        console.error(`Fetch error. Retrying in ${delay}ms...`, error);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
+                
+                if (result && result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    llmContentDiv.innerHTML = `<pre class="whitespace-pre-wrap">${text}</pre>`;
+                } else {
+                    llmContentDiv.innerHTML = `<p class="text-center text-red-500">เกิดข้อผิดพลาดในการสร้างชุดคำถาม กรุณาลองใหม่อีกครั้ง</p>`;
+                }
+            } catch (error) {
+                console.error('Error generating questions:', error);
+                llmContentDiv.innerHTML = `<p class="text-center text-red-500">เกิดข้อผิดพลาดในการสร้างชุดคำถาม กรุณาลองใหม่อีกครั้ง</p>`;
+            } finally {
+                questionsButton.disabled = false;
+                questionsButton.textContent = 'สร้างชุดคำถามสัมภาษณ์ ✨';
+                document.getElementById('generate-plan-btn').disabled = false;
+            }
+        }
+
+        window.onload = () => {
+            createSliders();
+            initChart();
+            showDetails(0);
+            document.getElementById('generate-plan-btn').addEventListener('click', generatePlan);
+            document.getElementById('generate-questions-btn').addEventListener('click', generateInterviewQuestions);
+        };
+    </script>
+</body>
+</html>
